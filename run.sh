@@ -10,4 +10,4 @@ if [ -z "$CHAIN_ID" ]; then
   exit 1
 fi
 
-tenderseed -seeds="$SEEDS" -chain-id "$CHAIN_ID" start
+tinyseed -seeds="$SEEDS" -chain-id "$CHAIN_ID" start
