@@ -34,7 +34,7 @@ This streamlined program can be used with `docker` to easily deploy a seed node 
 
 ### Docker Setup
 ```bash
-# Clean up old docker
+# Remove any currently installed Docker for clean install
 sudo apt-get remove docker docker-engine docker.io containerd runc
 
 # Download latest Package Information
