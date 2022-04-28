@@ -115,6 +115,31 @@ deployment:
       count: 1
 ```
 
+## Service File
+
+If you'd like to run as service file, here is a template. TinySeed limits to 2 variables, displayed in example:
+
+```
+sudo nano /etc/systemd/system/tinyseed.service
+```
+
+```
+[Unit]
+Description=tinyseed
+After=network-online.target
+
+[Service]
+User=<username>
+ExecStart=/home/<username>/go/bin/tinyseed tinyseed
+Restart=always
+RestartSec=3
+Environment="ID=<chain-id>"
+Environment="SEEDS=<SEEDS>"
+LimitNOFILE=4096
+
+[Install]
+WantedBy=multi-user.target
+```
 
 ## License
 
