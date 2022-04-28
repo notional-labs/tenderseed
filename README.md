@@ -6,10 +6,11 @@ This tool runs a seed node for any tendermint based blockchain, crawls the netwo
 
 It is used to pinpoint centralization of network in common infrastructure hosts like AWS, GCP etc, as well as to globally lanunch new chains from Miredo-enabled, edge-of-network write-through-cache powered raspberry pi devices that provide validation at a fraction of the original cost.  
 
-###Configuration
+### Configuration
 
 ```bash
 git clone https://github.com/notional-labs/tinyseed
+cd tinyseed
 go mod tidy
 go install .
 tinyseed
