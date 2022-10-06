@@ -7,7 +7,6 @@ To seed all 60 chains in cosmos:
 
 ```bash
 git clone https://github.com/notional-labs/tinyseed
-go mod tidy
 go install .
 tinyseed
 ```
