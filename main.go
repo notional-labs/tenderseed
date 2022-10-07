@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/mitchellh/go-homedir"
@@ -20,11 +21,7 @@ var (
 )
 
 func main() {
-	userHomeDir, err := homedir.Dir()
 	seedConfig := DefaultConfig()
-	if err != nil {
-		panic(err)
-	}
 
 	chains := GetChains()
 
@@ -33,82 +30,103 @@ func main() {
 	for _, chain := range chains.Chains {
 		current := GetChain(chain)
 		allchains = append(allchains, current)
-		if err != nil {
-			panic(err)
-		}
-	}
-
-	nodeKeyFilePath := filepath.Join(userHomeDir, configDir, "config", seedConfig.NodeKeyFile)
-	nodeKey, err := p2p.LoadOrGenNodeKey(nodeKeyFilePath)
-	if err != nil {
-		panic(err)
 	}
 
 	// Seed each chain
-
 	for i, chain := range allchains {
 		// increment the port number
-		port := 7000 + i
-		address := "tcp://0.0.0.0:" + fmt.Sprint(port)
+		address := "tcp://0.0.0.0:" + fmt.Sprint(9000+i)
 
-		peers := chain.Peers.PersistentPeers
-		seeds := chain.Peers.Seeds
-		// make the struct of seeds into a string
-		var allseeds []string
-		for _, seed := range seeds {
-			allseeds = append(allseeds, seed.ID+"@"+seed.Address) //nolint:staticcheck
-		}
+		// make folders and files
+		nodeKey := MakeFolders(chain, seedConfig)
 
 		// allpeers is a slice of peers
 		var allpeers []string
 		// make the struct of peers into a string
-		for _, peer := range peers {
-			allpeers = append(allpeers, peer.ID+"@"+peer.Address) //nolint:staticcheck
+		for _, peer := range chain.Peers.PersistentPeers {
+			thispeer := peer.ID + "@" + peer.Address
+
+			// check to make sure there's a colon in the address
+			if !strings.Contains(thispeer, ":") {
+				continue
+			}
+
+			// ensure that there is only one ampersand in the address
+			if strings.Count(thispeer, "@") != 1 {
+				continue
+			}
+			allpeers = append(allpeers, thispeer) //nolint:staticcheck
 		}
 
 		// set the configuration
 		seedConfig.ChainID = chain.ChainID
-		seedConfig.Seeds = append(seedConfig.Peers, seedConfig.Seeds...)
+		seedConfig.Seeds = allpeers
 		seedConfig.ListenAddress = address
 
-		// init config directory & files
-		homeDir := filepath.Join(userHomeDir, configDir+"/"+chain.ChainID, "config")
-		configFilePath := filepath.Join(homeDir, "config.toml")
-		nodeKeyFilePath := filepath.Join(homeDir, seedConfig.NodeKeyFile)
-		addrBookFilePath := filepath.Join(homeDir, seedConfig.AddrBookFile)
-
-		// Make folders
-		err = os.MkdirAll(filepath.Dir(nodeKeyFilePath), os.ModePerm)
-		if err != nil {
-			panic(err)
-		}
-		err = os.MkdirAll(filepath.Dir(addrBookFilePath), os.ModePerm)
-		if err != nil {
-			panic(err)
-		}
-		err = os.MkdirAll(filepath.Dir(configFilePath), os.ModePerm)
-		if err != nil {
-			panic(err)
-		}
-
 		// give the user addresses where we are seeding
-		logger.Info("Starting Seed Node for " + chain.ChainID + " on " + string(nodeKey.ID()) + "@0.0.0.0:" + fmt.Sprint(port))
-		Start(seedConfig, nodeKey)
+		logger.Info("Starting Seed Node for " + chain.ChainID + " on " + string(nodeKey.ID()) + "@0.0.0.0:" + fmt.Sprint(9000+i))
+
+		go Start(seedConfig, &nodeKey)
+		time.Sleep(3 * time.Second)
+
 	}
+	for {
+	}
+}
+
+// make folders and files
+func MakeFolders(chain Chain, seedConfig *Config) (nodeKey p2p.NodeKey) {
+	userHomeDir, err := homedir.Dir()
+	if err != nil {
+		panic(err)
+	}
+
+	// init config directory & files
+	homeDir := filepath.Join(userHomeDir, configDir+"/"+chain.ChainID)
+	configFilePath := filepath.Join(homeDir, "config.toml")
+	addrBookFilePath := filepath.Join(homeDir, "addrbook.json")
+	nodeKeyFilePath := filepath.Join(homeDir, "node_key.json")
+
+	// Make folders
+	err = os.MkdirAll(filepath.Dir(nodeKeyFilePath), os.ModePerm)
+	if err != nil {
+		panic(err)
+	}
+	err = os.MkdirAll(filepath.Dir(addrBookFilePath), os.ModePerm)
+	if err != nil {
+		panic(err)
+	}
+	err = os.MkdirAll(filepath.Dir(configFilePath), os.ModePerm)
+	if err != nil {
+		panic(err)
+	}
+
+	nk, err := p2p.LoadOrGenNodeKey(nodeKeyFilePath)
+	if err != nil {
+		panic(err)
+	}
+
+	return *nk
 }
 
 // Start starts a Tenderseed
 func Start(seedConfig *Config, nodeKey *p2p.NodeKey) {
 	chainID := seedConfig.ChainID
 	cfg := config.DefaultP2PConfig()
-	cfg.AllowDuplicateIP = true
-
 	userHomeDir, err := homedir.Dir()
 	if err != nil {
 		panic(err)
 	}
 
 	filteredLogger := log.NewFilter(logger, log.AllowInfo())
+
+	logger.Info("Configuration",
+		"chain", chainID,
+		"key", nodeKey.ID(),
+		"node listen", seedConfig.ListenAddress,
+		"max-inbound", seedConfig.MaxNumInboundPeers,
+		"max-outbound", seedConfig.MaxNumOutboundPeers,
+	)
 
 	protocolVersion := p2p.NewProtocolVersion(
 		version.P2PProtocol,
@@ -137,9 +155,9 @@ func Start(seedConfig *Config, nodeKey *p2p.NodeKey) {
 		panic(err)
 	}
 
-	addrBookFilePath := filepath.Join(userHomeDir, configDir, "config", seedConfig.AddrBookFile)
+	addrBookFilePath := filepath.Join(userHomeDir, configDir, seedConfig.AddrBookFile)
 	book := pex.NewAddrBook(addrBookFilePath, seedConfig.AddrBookStrict)
-	book.SetLogger(filteredLogger.With("module", "book"))
+	//	book.SetLogger(filteredLogger.With("module", "book"))
 
 	pexReactor := pex.NewReactor(book, &pex.ReactorConfig{
 		SeedMode:                     true,
@@ -147,7 +165,7 @@ func Start(seedConfig *Config, nodeKey *p2p.NodeKey) {
 		SeedDisconnectWaitPeriod:     1 * time.Second, // default is 28 hours, we just want to harvest as many addresses as possible
 		PersistentPeersMaxDialPeriod: 0,               // use exponential back-off
 	})
-	pexReactor.SetLogger(filteredLogger.With("module", "pex"))
+	//	pexReactor.SetLogger(filteredLogger.With("module", "pex"))
 
 	sw := p2p.NewSwitch(cfg, transport)
 	sw.SetLogger(filteredLogger.With("module", "switch"))
@@ -168,8 +186,10 @@ func Start(seedConfig *Config, nodeKey *p2p.NodeKey) {
 		ticker := time.NewTicker(5 * time.Second)
 
 		for range ticker.C {
-			logger.Info(seedConfig.ChainID, "has peers", sw.Peers().List())
-			book.Save()
+			peersout, peersin, dialing := sw.NumPeers()
+			logger.Info(seedConfig.ChainID, "has ", peersout, " outbound peers, ", peersin, " inbound peers, and ", dialing, " dialing peers")
 		}
 	}()
+
+	// if we block here, we just get the first chain.
 }
