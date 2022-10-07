@@ -67,8 +67,10 @@ func main() {
 		logger.Info("Starting Seed Node for " + chain.ChainID + " on " + string(nodeKey.ID()) + "@0.0.0.0:" + fmt.Sprint(9000+i))
 
 		go Start(seedConfig, &nodeKey)
-		time.Sleep(3 * time.Second)
+		time.Sleep(1 * time.Second)
 
+	}
+	for {
 	}
 }
 
