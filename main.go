@@ -69,6 +69,12 @@ func main() {
 
 	port := 6969
 
+	nodeKeyFilePath := filepath.Join(userHomeDir, configDir, "config", seedConfig.NodeKeyFile)
+	nodeKey, err := p2p.LoadOrGenNodeKey(nodeKeyFilePath)
+	if err != nil {
+		panic(err)
+	}
+
 	// Seed each chain
 	for _, chain := range allchains {
 		// increment the port number
@@ -115,23 +121,19 @@ func main() {
 			panic(err)
 		}
 
-		logger.Info("Starting Seed Node for " + chain.ChainID + " on " + fmt.Sprint(port))
-		defer Start(*seedConfig)
+		// give the user addresses where we are seeding
+		logger.Info("Starting Seed Node for " + chain.ChainID + " on " + string(nodeKey.ID()) + "@0.0.0.0:" + fmt.Sprint(port))
+		go Start(seedConfig, nodeKey)
 	}
 }
 
 // Start starts a Tenderseed
-func Start(seedConfig Config) {
+func Start(seedConfig *Config, nodeKey *p2p.NodeKey) {
 	chainID := seedConfig.ChainID
 	cfg := config.DefaultP2PConfig()
 	cfg.AllowDuplicateIP = true
 
 	userHomeDir, err := homedir.Dir()
-	if err != nil {
-		panic(err)
-	}
-	nodeKeyFilePath := filepath.Join(userHomeDir, configDir, "config", seedConfig.NodeKeyFile)
-	nodeKey, err := p2p.LoadOrGenNodeKey(nodeKeyFilePath)
 	if err != nil {
 		panic(err)
 	}
@@ -200,19 +202,17 @@ func Start(seedConfig Config) {
 		panic(err)
 	}
 
-	/*
-		go func() {
-			// Fire periodically
-			ticker := time.NewTicker(5 * time.Second)
+	go func() {
+		// Fire periodically
+		ticker := time.NewTicker(5 * time.Second)
 
-			for {
-				select {
-				case <-ticker.C:
-					logger.Info("Peers list", "peers", sw.Peers().List())
-				}
+		for {
+			select {
+			case <-ticker.C:
+				logger.Info(seedConfig.ChainID, "has peers", sw.Peers().List())
 			}
-		}()
-	*/
+		}
+	}()
 
 	sw.Wait()
 }
