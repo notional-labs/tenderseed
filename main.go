@@ -191,5 +191,6 @@ func Start(seedConfig *Config, nodeKey *p2p.NodeKey) {
 		}
 	}()
 
+	sw.Wait()
 	// if we block here, we just get the first chain.
 }
