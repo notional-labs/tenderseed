@@ -1,10 +1,7 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 	"time"
@@ -12,7 +9,6 @@ import (
 	"github.com/mitchellh/go-homedir"
 	"github.com/tendermint/tendermint/config"
 	"github.com/tendermint/tendermint/libs/log"
-	tmos "github.com/tendermint/tendermint/libs/os"
 	"github.com/tendermint/tendermint/p2p"
 	"github.com/tendermint/tendermint/p2p/pex"
 	"github.com/tendermint/tendermint/version"
@@ -23,31 +19,6 @@ var (
 	logger    = log.NewTMLogger(log.NewSyncWriter(os.Stdout))
 )
 
-// Config defines the configuration format
-type Config struct {
-	ListenAddress       string   `toml:"laddr" comment:"Address to listen for incoming connections"`
-	ChainID             string   `toml:"chain_id" comment:"network identifier (todo move to cli flag argument? keeps the config network agnostic)"`
-	NodeKeyFile         string   `toml:"node_key_file" comment:"path to node_key (relative to tendermint-seed home directory or an absolute path)"`
-	AddrBookFile        string   `toml:"addr_book_file" comment:"path to address book (relative to tendermint-seed home directory or an absolute path)"`
-	AddrBookStrict      bool     `toml:"addr_book_strict" comment:"Set true for strict routability rules\n Set false for private or local networks"`
-	MaxNumInboundPeers  int      `toml:"max_num_inbound_peers" comment:"maximum number of inbound connections"`
-	MaxNumOutboundPeers int      `toml:"max_num_outbound_peers" comment:"maximum number of outbound connections"`
-	Seeds               []string `toml:"seeds" comment:"seed nodes we can use to discover peers"`
-	Peers               []string `toml:"persistent_peers" comment:"persistent peers we will always keep connected to"`
-}
-
-// DefaultConfig returns a seed config initialized with default values
-func DefaultConfig() *Config {
-	return &Config{
-		ListenAddress:       "tcp://0.0.0.0:6969",
-		NodeKeyFile:         "node_key.json",
-		AddrBookFile:        "addrbook.json",
-		AddrBookStrict:      true,
-		MaxNumInboundPeers:  3000,
-		MaxNumOutboundPeers: 100,
-	}
-}
-
 func main() {
 	userHomeDir, err := homedir.Dir()
 	seedConfig := DefaultConfig()
@@ -55,19 +26,17 @@ func main() {
 		panic(err)
 	}
 
-	chains := getchains()
+	chains := GetChains()
 
 	var allchains []Chain
 	// Get all chains that seeds
 	for _, chain := range chains.Chains {
-		current := getchain(chain)
+		current := GetChain(chain)
 		allchains = append(allchains, current)
 		if err != nil {
 			panic(err)
 		}
 	}
-
-	port := 6969
 
 	nodeKeyFilePath := filepath.Join(userHomeDir, configDir, "config", seedConfig.NodeKeyFile)
 	nodeKey, err := p2p.LoadOrGenNodeKey(nodeKeyFilePath)
@@ -76,9 +45,10 @@ func main() {
 	}
 
 	// Seed each chain
-	for _, chain := range allchains {
+
+	for i, chain := range allchains {
 		// increment the port number
-		port++
+		port := 7000 + i
 		address := "tcp://0.0.0.0:" + fmt.Sprint(port)
 
 		peers := chain.Peers.PersistentPeers
@@ -123,7 +93,7 @@ func main() {
 
 		// give the user addresses where we are seeding
 		logger.Info("Starting Seed Node for " + chain.ChainID + " on " + string(nodeKey.ID()) + "@0.0.0.0:" + fmt.Sprint(port))
-		go Start(seedConfig, nodeKey)
+		Start(seedConfig, nodeKey)
 	}
 }
 
@@ -188,15 +158,6 @@ func Start(seedConfig *Config, nodeKey *p2p.NodeKey) {
 	// last
 	sw.SetNodeInfo(nodeInfo)
 
-	tmos.TrapSignal(logger, func() {
-		logger.Info("shutting down...")
-		book.Save()
-		err := sw.Stop()
-		if err != nil {
-			panic(err)
-		}
-	})
-
 	err = sw.Start()
 	if err != nil {
 		panic(err)
@@ -206,59 +167,9 @@ func Start(seedConfig *Config, nodeKey *p2p.NodeKey) {
 		// Fire periodically
 		ticker := time.NewTicker(5 * time.Second)
 
-		for {
-			select {
-			case <-ticker.C:
-				logger.Info(seedConfig.ChainID, "has peers", sw.Peers().List())
-			}
+		for range ticker.C {
+			logger.Info(seedConfig.ChainID, "has peers", sw.Peers().List())
+			book.Save()
 		}
 	}()
-
-	sw.Wait()
-}
-
-// getchains() gets the list of chains from the chain registry
-func getchains() Chains {
-	resp, err := http.Get("https://cosmos-chain.directory/chains")
-	if err != nil {
-		fmt.Println(err)
-	}
-
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		fmt.Println(err)
-	}
-
-	var chains Chains
-
-	err = json.Unmarshal([]byte(body), &chains)
-	if err != nil {
-		fmt.Println(err)
-	}
-	return chains
-}
-
-// getchain() gets one chain's records from the chain registry
-func getchain(chainid string) Chain {
-	resp, err := http.Get("https://cosmos-chain.directory/chains/" + chainid)
-	if err != nil {
-		fmt.Println(err)
-	}
-
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		fmt.Println(err)
-	}
-
-	var chain Chain
-
-	err = json.Unmarshal([]byte(body), &chain)
-	if err != nil {
-		fmt.Println(err)
-	}
-	return chain
 }
