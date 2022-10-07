@@ -70,8 +70,6 @@ func main() {
 		time.Sleep(3 * time.Second)
 
 	}
-	for {
-	}
 }
 
 // make folders and files
@@ -162,7 +160,7 @@ func Start(seedConfig *Config, nodeKey *p2p.NodeKey) {
 	pexReactor := pex.NewReactor(book, &pex.ReactorConfig{
 		SeedMode:                     true,
 		Seeds:                        seedConfig.Seeds,
-		SeedDisconnectWaitPeriod:     1 * time.Second, // default is 28 hours, we just want to harvest as many addresses as possible
+		SeedDisconnectWaitPeriod:     5 * time.Second, // default is 28 hours, we just want to harvest as many addresses as possible
 		PersistentPeersMaxDialPeriod: 0,               // use exponential back-off
 	})
 	//	pexReactor.SetLogger(filteredLogger.With("module", "pex"))
@@ -187,7 +185,7 @@ func Start(seedConfig *Config, nodeKey *p2p.NodeKey) {
 
 		for range ticker.C {
 			peersout, peersin, dialing := sw.NumPeers()
-			logger.Info(seedConfig.ChainID, peersout, " outbound peers, ", peersin, " inbound peers, and ", dialing, " dialing peers")
+			fmt.Println(seedConfig.ChainID, peersout, " outbound peers, ", peersin, " inbound peers, and ", dialing, " dialing peers")
 		}
 	}()
 
