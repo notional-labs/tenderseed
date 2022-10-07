@@ -187,7 +187,7 @@ func Start(seedConfig *Config, nodeKey *p2p.NodeKey) {
 
 		for range ticker.C {
 			peersout, peersin, dialing := sw.NumPeers()
-			logger.Info(seedConfig.ChainID, "has ", peersout, " outbound peers, ", peersin, " inbound peers, and ", dialing, " dialing peers")
+			logger.Info(seedConfig.ChainID, peersout, " outbound peers, ", peersin, " inbound peers, and ", dialing, " dialing peers")
 		}
 	}()
 
