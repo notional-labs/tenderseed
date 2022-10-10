@@ -86,17 +86,11 @@ func MakeFolders(chain Chain, seedConfig *Config) (nodeKey p2p.NodeKey) {
 	nodeKeyFilePath := filepath.Join(homeDir, "node_key.json")
 
 	// Make folders
-	err = os.MkdirAll(filepath.Dir(nodeKeyFilePath), os.ModePerm)
-	if err != nil {
-		panic(err)
-	}
-	err = os.MkdirAll(filepath.Dir(addrBookFilePath), os.ModePerm)
-	if err != nil {
-		panic(err)
-	}
-	err = os.MkdirAll(filepath.Dir(configFilePath), os.ModePerm)
-	if err != nil {
-		panic(err)
+	for _, path := range []string{configFilePath, addrBookFilePath, nodeKeyFilePath} {
+		err := os.MkdirAll(filepath.Dir(path), 0700)
+		if err != nil {
+			panic(err)
+		}
 	}
 
 	nk, err := p2p.LoadOrGenNodeKey(nodeKeyFilePath)
