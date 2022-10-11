@@ -14,6 +14,7 @@ import (
 	"github.com/tendermint/tendermint/p2p/pex"
 	"github.com/tendermint/tendermint/version"
 
+	"github.com/Entrio/subenv"
 	"github.com/mitchellh/go-homedir"
 )
 
@@ -30,16 +31,16 @@ type Config struct {
 }
 
 // DefaultConfig returns a seed config initialized with default values
-func DefaultConfig() *Config {
+func DefaultConfig(basePath string) *Config {
 	return &Config{
-		ListenAddress:       "tcp://0.0.0.0:6969",
-		ChainID:             "osmosis-1",
-		NodeKeyFile:         "config/node_key.json",
-		AddrBookFile:        "data/addrbook.json",
-		AddrBookStrict:      true,
-		MaxNumInboundPeers:  1000,
-		MaxNumOutboundPeers: 1000,
-		Seeds:               "1b077d96ceeba7ef503fb048f343a538b2dcdf1b@136.243.218.244:26656,2308bed9e096a8b96d2aa343acc1147813c59ed2@3.225.38.25:26656,085f62d67bbf9c501e8ac84d4533440a1eef6c45@95.217.196.54:26656,f515a8599b40f0e84dfad935ba414674ab11a668@osmosis.blockpane.com:26656",
+		ListenAddress:       fmt.Sprintf("tcp://0.0.0.0:%d", subenv.EnvI("LISTEN_PORT", 6969)),
+		ChainID:             subenv.Env("CHAIN_ID", "osmosis-1"),
+		NodeKeyFile:         filepath.Join(basePath, "config/node_key.json"),
+		AddrBookFile:        filepath.Join(basePath, "data/addrbook.json"),
+		AddrBookStrict:      subenv.EnvB("ADDR_STRICT", true),
+		MaxNumInboundPeers:  subenv.EnvI("MAX_INBOUND", 1000),
+		MaxNumOutboundPeers: subenv.EnvI("MAX_OUTBOUND", 1000),
+		Seeds:               subenv.Env("SEEDS", "1b077d96ceeba7ef503fb048f343a538b2dcdf1b@136.243.218.244:26656,2308bed9e096a8b96d2aa343acc1147813c59ed2@3.225.38.25:26656,085f62d67bbf9c501e8ac84d4533440a1eef6c45@95.217.196.54:26656,f515a8599b40f0e84dfad935ba414674ab11a668@osmosis.blockpane.com:26656"),
 	}
 }
 
@@ -54,7 +55,7 @@ func main() {
 	configFilePath := filepath.Join(homeDir, configFile)
 	MkdirAllPanic(filepath.Dir(configFilePath), os.ModePerm)
 
-	SeedConfig := DefaultConfig()
+	SeedConfig := DefaultConfig(homeDir)
 
 	Start(*SeedConfig)
 
@@ -69,14 +70,14 @@ func MkdirAllPanic(path string, perm os.FileMode) {
 }
 
 // Start starts a Tenderseed
-func Start(SeedConfig Config) {
+func Start(seedConfig Config) {
 	logger := log.NewTMLogger(
 		log.NewSyncWriter(os.Stdout),
 	)
 
-	chainID := SeedConfig.ChainID
-	nodeKeyFilePath := SeedConfig.NodeKeyFile
-	addrBookFilePath := SeedConfig.AddrBookFile
+	chainID := seedConfig.ChainID
+	nodeKeyFilePath := seedConfig.NodeKeyFile
+	addrBookFilePath := seedConfig.AddrBookFile
 
 	MkdirAllPanic(filepath.Dir(nodeKeyFilePath), os.ModePerm)
 	MkdirAllPanic(filepath.Dir(addrBookFilePath), os.ModePerm)
@@ -97,11 +98,11 @@ func Start(SeedConfig Config) {
 
 	logger.Info("tenderseed",
 		"key", nodeKey.ID(),
-		"listen", SeedConfig.ListenAddress,
+		"listen", seedConfig.ListenAddress,
 		"chain", chainID,
-		"strict-routing", SeedConfig.AddrBookStrict,
-		"max-inbound", SeedConfig.MaxNumInboundPeers,
-		"max-outbound", SeedConfig.MaxNumOutboundPeers,
+		"strict-routing", seedConfig.AddrBookStrict,
+		"max-inbound", seedConfig.MaxNumInboundPeers,
+		"max-outbound", seedConfig.MaxNumOutboundPeers,
 	)
 
 	// TODO(roman) expose per-module log levels in the config
@@ -118,7 +119,7 @@ func Start(SeedConfig Config) {
 	nodeInfo := p2p.DefaultNodeInfo{
 		ProtocolVersion: protocolVersion,
 		DefaultNodeID:   nodeKey.ID(),
-		ListenAddr:      SeedConfig.ListenAddress,
+		ListenAddr:      seedConfig.ListenAddress,
 		Network:         chainID,
 		Version:         "0.6.9",
 		Channels:        []byte{pex.PexChannel},
@@ -135,12 +136,12 @@ func Start(SeedConfig Config) {
 		panic(err)
 	}
 
-	book := pex.NewAddrBook(addrBookFilePath, SeedConfig.AddrBookStrict)
+	book := pex.NewAddrBook(addrBookFilePath, seedConfig.AddrBookStrict)
 	book.SetLogger(filteredLogger.With("module", "book"))
 
 	pexReactor := pex.NewReactor(book, &pex.ReactorConfig{
 		SeedMode: true,
-		Seeds:    tmstrings.SplitAndTrim(SeedConfig.Seeds, ",", " "),
+		Seeds:    tmstrings.SplitAndTrim(seedConfig.Seeds, ",", " "),
 	})
 	pexReactor.SetLogger(filteredLogger.With("module", "pex"))
 
