@@ -1,12 +1,13 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 
-	"os"
-
 	"github.com/tendermint/tendermint/config"
+	"github.com/tendermint/tendermint/crypto/ed25519"
 	"github.com/tendermint/tendermint/libs/log"
 	tmos "github.com/tendermint/tendermint/libs/os"
 	tmstrings "github.com/tendermint/tendermint/libs/strings"
@@ -32,14 +33,14 @@ type Config struct {
 // DefaultConfig returns a seed config initialized with default values
 func DefaultConfig() *Config {
 	return &Config{
-		ListenAddress:       "tcp://0.0.0.0:6969",
-		ChainID:             "osmosis-1",
+		ListenAddress:       "tcp://127.0.0.1:6969",
+		ChainID:             "test-chain-PrsNRI",
 		NodeKeyFile:         "config/node_key.json",
 		AddrBookFile:        "data/addrbook.json",
 		AddrBookStrict:      true,
 		MaxNumInboundPeers:  1000,
 		MaxNumOutboundPeers: 1000,
-		Seeds:               "1b077d96ceeba7ef503fb048f343a538b2dcdf1b@136.243.218.244:26656,2308bed9e096a8b96d2aa343acc1147813c59ed2@3.225.38.25:26656,085f62d67bbf9c501e8ac84d4533440a1eef6c45@95.217.196.54:26656,f515a8599b40f0e84dfad935ba414674ab11a668@osmosis.blockpane.com:26656",
+		Seeds:               "3ad29a3a733cecd50593dc7a7238785abe5d39da@127.0.0.1:26656",
 	}
 }
 
@@ -95,7 +96,7 @@ func Start(SeedConfig Config) {
 	// keep trying to make outbound connections to exchange peering info
 	cfg.MaxNumOutboundPeers = 400
 
-	nodeKey, err := p2p.LoadOrGenNodeKey(nodeKeyFilePath)
+	nodeKey, err := LoadOrGen1MBNodeKey(nodeKeyFilePath)
 	if err != nil {
 		panic(err)
 	}
@@ -109,17 +110,16 @@ func Start(SeedConfig Config) {
 		"max-outbound", SeedConfig.MaxNumOutboundPeers,
 	)
 
-	// TODO(roman) expose per-module log levels in the config
+	// TODO: expose per-module log levels in the config
 	filteredLogger := log.NewFilter(logger, log.AllowInfo())
 
-	protocolVersion :=
-		p2p.NewProtocolVersion(
-			version.P2PProtocol,
-			version.BlockProtocol,
-			0,
-		)
+	protocolVersion := p2p.NewProtocolVersion(
+		version.P2PProtocol,
+		version.BlockProtocol,
+		0,
+	)
 
-	// NodeInfo gets info on yhour node
+	// NodeInfo gets info on your node
 	nodeInfo := p2p.DefaultNodeInfo{
 		ProtocolVersion: protocolVersion,
 		DefaultNodeID:   nodeKey.ID(),
@@ -173,4 +173,55 @@ func Start(SeedConfig Config) {
 	}
 
 	sw.Wait()
+}
+
+// LoadOrGen1MBNodeKey loads or generates a 1MB Tendermint PrivKeyEd25519 key
+func LoadOrGen1MBNodeKey(nodeKeyFilePath string) (*p2p.NodeKey, error) {
+	if tmos.FileExists(nodeKeyFilePath) {
+		return p2p.LoadNodeKey(nodeKeyFilePath)
+	}
+
+	privKey := ed25519.GenPrivKey()
+	privKeyBytes := privKey[:]
+
+	privKeyJSON := map[string]interface{}{
+		"priv_key": map[string]interface{}{
+			"type":  "tendermint/PrivKeyEd25519",
+			"value": privKeyBytes,
+		},
+	}
+
+	// Encode the JSON to a byte slice
+	jsonBytes, err := json.MarshalIndent(privKeyJSON, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+
+	// Create the file and write the JSON content
+	file, err := os.Create(nodeKeyFilePath)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	if _, err := file.Write(jsonBytes); err != nil {
+		return nil, err
+	}
+
+	// Get the current file size
+	fileInfo, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+
+	// Calculate the padding size
+	paddingSize := 1024*1024 - fileInfo.Size()
+	if paddingSize > 0 {
+		padding := make([]byte, paddingSize)
+		if _, err := file.Write(padding); err != nil {
+			return nil, err
+		}
+	}
+
+	return p2p.LoadNodeKey(nodeKeyFilePath)
 }
